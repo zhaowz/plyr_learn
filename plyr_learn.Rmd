@@ -1,0 +1,130 @@
+---
+title: "plyr_learn"
+output: html_document
+---
+
+### ddplyr 示例
+####1 summarise + ddply
+**对原始数据进行归纳，产生新的数据框显示，类似mutate函数**
+```{r}
+library(plyr)
+head(baseball)
+summarise(baseball,
+          duration = max(year) - min(year),
+          nteams = length(unique(team)))
+```
+- **通常summarise结合plyr使用**
+
+```{r}
+newData <- ddply(baseball, "id")    # 按id分组,因为没有func函数，这里是按id顺序排序
+head(newData)
+summarise(newData,                  # 对分组后的每组数据进行汇总
+          duration = max(year) - min(year),
+          nteams = length(unique(team)))
+
+df <- ddply(baseball, "id", summarise,    #按id分组，分组后每组数据在year变量和team变量上进行汇总
+ duration = max(year) - min(year),
+ nteams = length(unique(team)))
+
+head(df)
+```
+- **summarise后的函数相当于作用于分组后的数据 **
+
+#####2 多变量
+```{r,eval=FALSE}
+install.packages("plyr"")
+```
+```{r}
+library(plyr)
+dfx <- data.frame(         #生成数据
+  group = c(rep('A', 8), rep('B', 15), rep('C', 6)),
+  sex   = sample(c('M', 'F'), size = 29, replace = T),
+  age   = runif(n = 29, min = 18, max = 54)
+)
+dfx
+dd <- ddply(dfx, .(group, sex), summarize,       #按group和sex分别分组进行统计
+ mean = round(mean(age), 2),
+ sd = round(sd(age), 2))
+head(dd)
+```
+#### .(group, sex) 的效果等价于 c("group", "sex")
+
+#####3 使用公式，多函数
+```{r} 
+x <- baseball[1:100,]
+head( ddply(x, ~ year+team, nrow) ) # 使用公式表示分组变量
+x[x[,"year"]==1871 & x[,"team"]=='CL1',]    # 验证，发现确实如此
+
+head( ddply(baseball, .(team), c("nrow", "ncol")) )  # 使用两个函数，分组后每组多少行，多少列
+```
+
+#####4 summarise + ddply
+```{r,fig.height=4,fig.width=6,fig.align='center'}
+rbi <- ddply(baseball, .(year), summarise,
+  mean_rbi = mean(rbi, na.rm = TRUE))        #按year分组，对每组的rbi求均值
+plot(mean_rbi ~ year, type = "l", data = rbi)
+```
+
+##### 5 mutate, 产生新的变量,返回原始数据+新变量
+```{r}
+df <- data.frame(id = rep(letters[1:3], each = 3),value = 1:9)
+df
+ddply(df, .(id), mutate, mean = mean(value))    
+```
+##### [关于mutate、summarise的原理](http://stackoverflow.com/questions/26935150/use-of-ddply-mutate-with-a-custom-function)
+
+---
+
+###下面需要认真再看，总结
+
+##### 6 一个简单回归的例子
+```{r}
+model <- function(x) {                  
+    lm(Petal.Length~Petal.Width,data=x)  # 首先定义回归函数
+}
+# 如果用普通的函数则需要如下的分割、计算、整合三个步骤共四条命令
+pieces <- split(iris,list(iris$Species))  # 按品种分为3类
+models <- lapply(pieces,model)            # 每个品种应用回归模型，得到3组参数
+sapply(models,coef)                       # 组合结果
+```
+** 用plyr包只用下面两个函数，每个函数都内置了分割、计算、整合的功能。**
+
+```{r}
+result1 <- dlply(iris,.(Species),model)
+result1
+
+result2 <- ldply(result1,function(x) coef(x))
+result2
+```
+
+#####7 r*ply和m*ply，分别对应的是replicate和mapply函数。
+```{r}
+replicate(20,mean(runif(100)))
+rdply(20, mean(runif(100)))
+mapply(rnorm,mean=1:5,sd=1:5, n=2)
+mdply(data.frame(mean = 1:5, sd = 1:5), rnorm, n = 2)
+```
+
+
+最后我们来看一个mdply函数的应用，我们希望用神经网络包来为不同的花进行分类，使用BP神经网络需要的一个参数就是隐藏层神经元的个数。我们来尝试用1到10这十个参数运行模型十次，并观察十个建模结果的预测准确率。但我们并不需要手动运行十次。而是使用mdply函数来完成这个任务。
+
+library(nnet)
+# 确定建模函数
+nnet.m <- function(...) {
+  nnet(Species~.,data=iris,trace=F,...)
+}
+# 确定输入参数
+opts <- data.frame(size=1:10,maxiter=50)
+# 建立预测准确率的函数
+accuracy <- function(mod,true) {
+  pred <- factor(predict(mod,type='class'),levels=levels(true))
+  tb <- table(pred,true)
+  sum(diag(tb))/sum(tb)
+}
+# 用mlply函数建立包括10个元素的列表，每个元素包括了一个建模结果
+models <- mlply(opts,nnet.m)
+# 再用ldply函数读取列表，计算后得到最终结果
+ldply(models,'accuracy',true=iris$Species)
+
+
+---
