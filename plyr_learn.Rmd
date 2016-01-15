@@ -3,9 +3,9 @@ title: "plyr_learn"
 output: html_document
 ---
 
-### ddplyr 示例
+### ddply 示例
 ####1 summarise + ddply
-**对原始数据进行归纳，产生新的数据框显示，类似mutate函数**
+**对原始数据进行归纳，函数产生新的数据框显示，区别mutate函数（函数产生的变量和原始数据一起返回）**
 ```{r}
 library(plyr)
 head(baseball)
@@ -29,6 +29,7 @@ df <- ddply(baseball, "id", summarise,    #按id分组，分组后每组数据�
 head(df)
 ```
 - **summarise后的函数相当于作用于分组后的数据 **
+- **一旦ddply结合summarise或mutate使用，后面的函数针对的是分组后的某列**
 
 #####2 多变量
 ```{r,eval=FALSE}
@@ -71,11 +72,46 @@ df <- data.frame(id = rep(letters[1:3], each = 3),value = 1:9)
 df
 ddply(df, .(id), mutate, mean = mean(value))    
 ```
-##### [关于mutate、summarise的原理](http://stackoverflow.com/questions/26935150/use-of-ddply-mutate-with-a-custom-function)
 
 ---
 
-###下面需要认真再看，总结
+#####[深入理解mutate和summarise](http://stackoverflow.com/questions/26935150/use-of-ddply-mutate-with-a-custom-function)
+**1、不用mutate、summarise   **
+    1）作用于分组后的dataFrame上
+```{r}
+   ddply(iris, .(Species), nrow)    
+```
+    2）作用于分组后的某（些）列上
+       2.1）使用inline函数
+```{r}
+   ddply(iris, .(Species), function(o) mean(o$Sepal.Length))    # 分类后每组length的均值
+```
+       2.2）模拟summarise
+```{r}
+   mean.func.summarise <- function(df){
+     data.frame( mean.length = mean( df$Sepal.Length ) )
+}
+   ddply(iris, .(Species), mean.func.summarise)     
+```
+       2.3）模拟mutate
+```{r}
+   mean.func.mutate <- function(df){
+     data.frame( df,mean.length = mean( df$Sepal.Length ) )
+}
+   head( ddply(iris, .(Species), mean.func.mutate)  )  
+```
+**2、使用mutate、summarise，函数就作用于分组后的某（些）列上**
+```{r}
+mean.func <- function(x) {
+  mean(x + runif(length(x)))     #使用定制函数
+}   
+ans <- ddply(iris, .(Species), mutate, jittered.mean.length = mean.func(Sepal.Length))
+head(ans) 
+
+ddply(iris, .(Species), summarize, jittered.mean.length = mean.func(Sepal.Length))
+```
+
+---
 
 ##### 6 一个简单回归的例子
 ```{r}
@@ -97,12 +133,10 @@ result2 <- ldply(result1,function(x) coef(x))
 result2
 ```
 
-#####7 r*ply和m*ply，分别对应的是replicate和mapply函数。
+#####7 r*ply对应的是replicate函数。
 ```{r}
-replicate(20,mean(runif(100)))
+replicate(20,mean(runif(100)))       # 随机生成100个数计算均值，运行20次
 rdply(20, mean(runif(100)))
-mapply(rnorm,mean=1:5,sd=1:5, n=2)
-mdply(data.frame(mean = 1:5, sd = 1:5), rnorm, n = 2)
 ```
 
 
